@@ -12,7 +12,7 @@ The AI Job Search Assistant is an interactive, multi-purpose application that he
 * [Description](#description)
 * [Features](#features)
 * [Architecture](#architecture)
-* [Q&A Agent Details](#architecture)
+* [Q&A Agent Details](#qa-agent-details)
 * [Installation](#installation)
 
 <!-- toc stop -->
@@ -58,7 +58,7 @@ The key functionalities include:
 
 ## Architecture
 
-![Overview AI job search assistant Architecture](diagram.png)
+![Overview AI job search assistant Architecture](architecture.png)
 
 
 ## Q&A Agent Details
@@ -80,8 +80,8 @@ The agent uses a carefully designed ChatPromptTemplate that includes:
 
 1. Clone the repository:
 ```bash
-git clone <https://github.com/mkoskinas/roboreviews.git>
-cd roboreviews
+git clone <https://github.com/mkoskinas/Job-Search-AI-Agent.git>
+cd Job-Search-AI-Agent
 ```
 2. Create and activate conda environment:
 ```bash
