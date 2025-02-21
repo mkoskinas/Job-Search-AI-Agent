@@ -92,7 +92,7 @@ class LinkedInJobScraperTool(BaseTool):
             chrome_options=None,
             headless=True,
             max_workers=1,
-            slow_mo=1.5,
+            slow_mo=2,
             page_load_timeout=60
         )
 
@@ -122,7 +122,7 @@ class LinkedInJobScraperTool(BaseTool):
                         locations=locations,
                         apply_link=True,
                         skip_promoted_jobs=True,
-                        limit=5,
+                        limit=8,
                         filters=QueryFilters(
                             relevance=RelevanceFilters.RECENT,
                             time=TimeFilters.MONTH,
