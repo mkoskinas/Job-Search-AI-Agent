@@ -10,20 +10,10 @@ The AI Job Search Assistant is an interactive, multi-purpose application that he
 
 * [Features](#features)
 * [Description](#description)
-* [Architecture](#architecture)
 * [Features](#features)
-* [Description](#description)
 * [Architecture](#architecture)
 * [Q&A Agent Details](#architecture)
 * [Installation](#installation)
-* [Anonymous vs authenticated session](#anonymous-vs-authenticated-session)
-* [Rate limiting](#rate-limiting)
-* [Proxy mode](#proxy-mode-experimental)
-* [Filters](#filters)
-* [Company filter](#company-filter)
-* [Logging](#logging)
-* [Sponsors](#sponsors)
-* [License](#license)
 
 <!-- toc stop -->
 
@@ -67,7 +57,6 @@ The key functionalities include:
     * File Handling: Users can upload CV files (PDF), which are processed and analysed
 
 ## Architecture
-<<<<<<< HEAD
 
 ![Overview AI job search assistant Architecture](diagram.png)
 
@@ -123,5 +112,3 @@ python main.py
 ```
 
 6. Access the web interface at `http://127.0.0.1:7861`
-=======
->>>>>>> 5c20a340304ac18b431eea7d5a4dda896fddb42e
