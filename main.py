@@ -50,7 +50,7 @@ class JobSearchAssistant:
         print("Initializing assistant...")
         start_time = time.time()
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
         self.llm = ChatOpenAI(
             temperature=0.0,
@@ -246,6 +246,10 @@ class JobSearchAssistant:
     @traceable 
     def chat(self, message, history, files):
         logger.info("Starting new chat interaction")
+        logger.info(f"Message: {message}")
+        logger.info(f"Files present: {bool(files)}")
+        logger.info(f"History length: {len(history) if history else 0}")
+
         start_time = time.time()
         try:
             message_lower = message.lower()
@@ -253,7 +257,7 @@ class JobSearchAssistant:
             enhancement_keywords = ["improve", "enhance", "suggest", "suggestions", "recommend", "update", "yes"]
             new_analysis_keywords = ["score", "analyze", "analyse", "evaluate", "review", "compare", "check"]
 
-            # Convert history to format expected by agent if it exists
+            # Convert history to format expected by agent
             agent_history = []
             if history:
                 for msg in history:
@@ -263,37 +267,9 @@ class JobSearchAssistant:
                         else:
                             agent_history.append({"type": "ai", "data": {"content": msg["content"]}})
 
-            # Check if job listings have been stored (using the marker)
-            logger.debug("Starting marker check in chat history")
-            marker_found = any(
-                "[JOB_LISTINGS_STORED]" in msg.content
-                for msg in self.memory.chat_memory.messages[-5:]
-                if isinstance(msg, (AIMessage, SystemMessage))
-            )
-            logger.debug(f"Job listings marker found: {marker_found}")
-
-            # If marker exists and the query appears to refer to the stored job listings
-            if marker_found:
-                # CV/Analysis requests should go through normal flow
-                if (files or  # CV upload
-                    any(kw in message_lower for kw in enhancement_keywords) or   
-                    any(kw in message_lower for kw in new_analysis_keywords) or  
-                    "linkedin.com/jobs" in message):   
-                    logger.debug("CV Analysis/Enhancement Request detected")
-                    # Let it fall through to the normal agent flow
-                    pass
-                else:
-                    # This is a follow-up question about jobs
-                    logger.info("Processing job-related follow-up question")
-                    response = self.agent.invoke({
-                        "input": f"The user is asking about the jobs that were just listed. Use the job_retriever tool to answer: {message}",
-                        "chat_history": agent_history
-                    })
-                    return response["output"]
-
-            # File upload branch
-            elif files:
-                logger.info("Processing file upload")                
+            # First, check if a file was uploaded (this takes precedence)
+            if files:
+                logger.info("Processing file upload")
                 if isinstance(files, str):  
                     file = files
                 elif isinstance(files, list) and files:
@@ -304,17 +280,19 @@ class JobSearchAssistant:
                 else:
                     logger.error(f"Invalid file format: {type(files)}")
                     return "Error: Please upload a valid PDF file."
-                    
+                        
                 try:
                     cv_text = self._extract_text_from_pdf(file)
                     logger.debug(f"Extracted CV text (length: {len(cv_text)})")
-                    
+
+                    logger.debug("Setting initial last_analysis")     
                     self.last_analysis = {
                         "cv_text": cv_text,
                         "job_description": None,
                         "analysis": None
                     }
-                    
+                    logger.debug(f"last_analysis state after CV upload: {self.last_analysis}")
+                        
                     job_description = self._process_job_description(message.strip())
                     if job_description and len(job_description) >= 50:
                         logger.debug("Calling analysis agent")
@@ -326,12 +304,36 @@ class JobSearchAssistant:
                             After getting the analysis results, display them and ask if the user would like improvement suggestions.""",
                             "chat_history": agent_history
                         })
-                        
+                            
                         logger.info("CV analysis completed successfully")
-                        self.last_analysis.update({
+                        
+                        # Extract the structured data from the analysis output
+                        structured_data = None
+                        if isinstance(analysis["output"], dict):
+                            structured_data = analysis["output"]
+                        elif isinstance(analysis["output"], str):
+                            try:
+                                import json
+                                start_idx = analysis["output"].find("{")
+                                end_idx = analysis["output"].rfind("}") + 1
+                                if start_idx >= 0 and end_idx > start_idx:
+                                    json_str = analysis["output"][start_idx:end_idx]
+                                    structured_data = json.loads(json_str)
+                            except:
+                                structured_data = {
+                                    "structured_analysis": None,
+                                    "llm_analysis": None,
+                                    "formatted_output": analysis["output"]
+                                }
+
+                        # Store both the raw output and structured data
+                        self.last_analysis = {
+                            "cv_text": cv_text,
                             "job_description": job_description,
-                            "analysis": analysis["output"]
-                        })
+                            "analysis": structured_data or analysis["output"],
+                            "raw_output": analysis["output"]
+                        }
+                        logger.debug(f"Analysis stored: {self.last_analysis}")
                         return analysis["output"]
                     else:
                         return "CV uploaded successfully. Please provide a job description to analyze against."
@@ -339,11 +341,39 @@ class JobSearchAssistant:
                     logger.error(f"CV processing error: {str(e)}", exc_info=True)
                     return f"Error processing CV: {str(e)}"
 
+            # Next, check if job listings have been stored (using the marker)
+            logger.debug(f"Memory messages: {[msg.content for msg in self.memory.chat_memory.messages[-5:] if isinstance(msg, (AIMessage, SystemMessage))]}")
+            logger.debug("Starting marker check in chat history")
+            marker_found = any(
+                "[JOB_LISTINGS_STORED]" in msg.content
+                for msg in self.memory.chat_memory.messages[-5:]
+                if isinstance(msg, (AIMessage, SystemMessage))
+            )
+            logger.debug(f"Job listings marker found: {marker_found}")
+
+            # Pre-enhancement branch check
+            logger.debug("Pre-enhancement branch check:")
+            logger.debug(f"- last_analysis exists: {bool(self.last_analysis)}")
+
+            if marker_found and not any(kw in message_lower for kw in enhancement_keywords + new_analysis_keywords):
+                # Process job-related follow-up
+                logger.debug("Routing to job retrieval")
+                logger.info("Processing job-related follow-up question")  
+                response = self.agent.invoke({
+                    "input": f"The user is asking about the jobs that were just listed. Use the job_retriever tool to answer: {message}",
+                    "chat_history": agent_history
+                })
+                return response["output"]
+
+            # CV upload/analysis request without a file
+            if any(phrase in message_lower for phrase in ["improve my cv", "review my cv", "check my cv"]) and not files:
+                return "To analyze or improve your CV, please upload your CV and provide a job description to analyze against."
+
             # Job description analysis branch
-            elif message and len(self._process_job_description(message.strip())) >= 200 and not self.last_analysis.get("analysis"):
+            elif message and len(self._process_job_description(message.strip())) >= 200 and self.last_analysis is not None and not self.last_analysis.get("analysis"):
                 job_description = self._process_job_description(message.strip())
                 logger.debug("Valid job description received for initial analysis")
-                
+                    
                 if not self.last_analysis or not self.last_analysis.get("cv_text"):
                     return "Please upload your CV first before providing a job description."
 
@@ -355,23 +385,59 @@ class JobSearchAssistant:
                     After getting the analysis results, display them and ask if the user would like improvement suggestions.""",
                     "chat_history": agent_history
                 })
-                
+                    
+                # Extract the structured data from the analysis output
+                structured_data = None
+                if isinstance(analysis["output"], dict):
+                    structured_data = analysis["output"]
+                elif isinstance(analysis["output"], str):
+                    try:
+                        import json
+                        start_idx = analysis["output"].find("{")
+                        end_idx = analysis["output"].rfind("}") + 1
+                        if start_idx >= 0 and end_idx > start_idx:
+                            json_str = analysis["output"][start_idx:end_idx]
+                            structured_data = json.loads(json_str)
+                    except:
+                        structured_data = {
+                            "structured_analysis": None,
+                            "llm_analysis": None,
+                            "formatted_output": analysis["output"]
+                        }
+
+                # Store both the raw output and structured data
+                logger.debug("Updating last_analysis with analysis results")
                 self.last_analysis.update({
                     "job_description": job_description,
-                    "analysis": analysis["output"]
+                    "analysis": structured_data or analysis["output"],
+                    "raw_output": analysis["output"]
                 })
+                logger.debug(f"last_analysis state after analysis: {self.last_analysis}")
+
+                logger.info("CV analysis completed successfully")
                 return analysis["output"]
+
+
 
             # CV Enhancement branch
             elif self.last_analysis and self.last_analysis.get("analysis") and any(kw in message_lower for kw in enhancement_keywords):
+                logger.debug(f"Message lower: {message_lower}")
+                logger.debug(f"Enhancement keywords found: {[kw for kw in enhancement_keywords if kw in message_lower]}")
+                logger.debug(f"Last analysis present: {bool(self.last_analysis and self.last_analysis.get('analysis'))}")
+
+                logger.debug(f"Enhancement branch - last_analysis: {self.last_analysis}")
                 logger.info("Processing CV enhancement request")
+                logger.debug(f"Last analysis content: {self.last_analysis}")
+                logger.debug(f"Analysis text: {self.last_analysis.get('analysis', 'No analysis found')}")    
+            
                 focus_area = "general"
                 for area, keywords in self.VALID_FOCUS_AREAS.items():
                     if any(keyword in message_lower for keyword in keywords):
                         focus_area = area
+                        logger.debug(f"Found matching keywords for area '{area}': {[k for k in keywords if k in message_lower]}")
                         break
                 logger.debug(f"Detected focus area: {focus_area}")
-                
+                    
                 try:
                     try:
                         logger.debug("Parsing analysis scores")
@@ -385,7 +451,7 @@ class JobSearchAssistant:
                         if overall_score is None:
                             overall_score = 75.0
                         categories = self.last_analysis.get("llm_analysis", {}).get("category_scores", {})
-                        
+                            
                         analysis_dict = {
                             "match_score": overall_score,
                             "analysis_text": self.last_analysis["analysis"],
@@ -406,7 +472,7 @@ class JobSearchAssistant:
                             "match_score": 75.0,
                             "analysis_text": self.last_analysis["analysis"],
                             "structured_data": {
-                                "overall_score": overall_score,
+                                "overall_score": 75.0,
                                 "categories": {
                                     "relevance": 75,
                                     "keywords": 75,
@@ -442,67 +508,18 @@ class JobSearchAssistant:
                     enhancement_output = self.cv_enhancer_tool._run(**tool_input)
                     logger.info("CV enhancement completed successfully")
                     return self._format_cv_evaluation(enhancement_output)
+                    
                 except Exception as e:
                     logger.error(f"Enhancement error: {str(e)}", exc_info=True)
-                    return f"Error generating improvements: {str(e)}"
-                
-            # New analysis branch
-            elif (self.last_analysis and self.last_analysis.get("analysis") and 
-                (any(kw in message_lower for kw in new_analysis_keywords) or 
-                len(self._process_job_description(message.strip())) >= 200)):
-                logger.info("Processing new analysis request")
-                try:
-                    # Get CV text - either from new upload or existing
-                    cv_text = None
-                    if files:
-                        try:
-                            cv_text = self._extract_text_from_pdf(files)
-                            logger.debug(f"Extracted new CV text (length: {len(cv_text)})")
-                        except Exception as e:
-                            logger.error(f"CV processing error: {str(e)}")
-                            return "Sorry, I had trouble processing your CV file. Please make sure it's a valid PDF and try again."
-                    
-                    if not cv_text and self.last_analysis and "cv_text" in self.last_analysis:
-                        cv_text = self.last_analysis["cv_text"]
-                    
-                    if not cv_text:
-                        logger.warning("No CV text found")
-                        return "I couldn't find a CV to analyze. Please upload a CV file."
+                    return "I apologize, but I encountered an error while trying to enhance your CV. Please try again."
 
-                    job_description = self._process_job_description(message.strip())
-                    if not job_description or len(job_description) < 50:
-                        logger.warning("Invalid or missing job description")
-                        return "Please provide a detailed job description to analyze against."
-
-                    logger.debug(f"Processing analysis (CV length: {len(cv_text)}, Job desc length: {len(job_description)})")
-                    analysis = self.agent.invoke({
-                        "input": f"""Use the cv_analyzer tool to analyze this CV against the job description.
-                        - cv_text: {cv_text}
-                        - job_description: {job_description}
-
-                        After getting the analysis results, display them and ask if the user would like improvement suggestions.""",
-                        "chat_history": agent_history
-                    })
-
-                    self.last_analysis = {
-                        "cv_text": cv_text,
-                        "job_description": job_description,
-                        "analysis": analysis["output"]
-                    }
-                    
-                    return analysis["output"]
-
-                except Exception as e:
-                    logger.error(f"Analysis error: {str(e)}", exc_info=True)
-                    return "I apologize, but I encountered an error analyzing your CV. Please try again."
             # Regular chat branch
             else:
                 logger.info("Processing regular chat request")
                 try:
-                    # Add special handling for CV improvement requests without uploads
                     if any(phrase in message_lower for phrase in ["improve my cv", "review my cv", "check my cv"]) and not files:
                         return "To analyze or improve your CV, please upload your CV and provide a job description to analyze against."
-        
+                
                     response = self.agent.invoke(
                         {"input": message},
                         return_intermediate_steps=True
@@ -510,41 +527,43 @@ class JobSearchAssistant:
                     logger.info(f"Chat response completed in {time.time() - start_time:.2f} seconds")
                     output = response["output"]
                     intermediate_steps = response.get("intermediate_steps", [])
-                    
+                        
                     # Process intermediate steps
                     for step in intermediate_steps:
                         tool = step[0]
                         tool_output = step[1]
-                        
+                            
                         if tool.tool == "job_scraper" and tool_output:
                             logger.debug("Processing job scraper output")
-                            
+                                
                             vectorizer_result = self.vectorizer_tool._run({
                                 "action": "store_jobs",
                                 "jobs": tool_output
                             })
                             logger.debug(f"Vectorizer result: {vectorizer_result}")
-                            
+                                
                             self.retriever_tool.vectorstore = self.vectorizer_tool.get_vectorstore()
                             logger.debug(f"Updated retriever vectorstore (total docs: {self.vectorizer_tool.get_total_docs()})")
-                            
+                                
                             marker_exists = any("[JOB_LISTINGS_STORED]" in msg.content
-                                            for msg in self.memory.chat_memory.messages 
-                                            if isinstance(msg, (AIMessage, SystemMessage)))
-                            
+                                                for msg in self.memory.chat_memory.messages 
+                                                if isinstance(msg, (AIMessage, SystemMessage)))
+                                
                             if not marker_exists:
                                 marker_message = SystemMessage(content="[JOB_LISTINGS_STORED]")
                                 self.memory.chat_memory.add_message(marker_message)
                                 logger.debug("Added job listings stored marker")
-                        
+                            
                     return output
-                
+                    
                 except Exception as e:
                     logger.error(f"Chat error: {str(e)}", exc_info=True)
                     return f"Error processing chat: {str(e)}"
+
         except Exception as e:
             logger.error(f"Critical error in chat method: {str(e)}", exc_info=True)
             return f"Error: {str(e)}"
+
         
 # Initialise the assistant
 assistant = JobSearchAssistant()
