@@ -1,45 +1,94 @@
-from langchain.tools import BaseTool
-from typing import Dict, Any, List, Type
-from pydantic import BaseModel, Field
-import json
-from langchain_core.language_models.chat_models import BaseChatModel
-import logging
+"""
+CV Enhancement Tool Module
 
+This module provides functionality for analyzing and improving CVs/resumes based on
+job descriptions and analysis results. It offers targeted suggestions for various
+CV sections including summary, experience, skills, and achievements.
+"""
+
+# Standard library imports
+import json
+import logging
+from typing import Dict, Any, List, Type
+
+# Third party imports
+from langchain.tools import BaseTool
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
+
+# Configure logging
 logger = logging.getLogger(__name__)
 
+
 class CVEnhancerInput(BaseModel):
-    cv_analysis: Dict[str, Any] = Field(..., description="Analysis results from CV Analyzer")
+    """
+    Input schema for CV enhancement requests.
+
+    Attributes:
+        cv_analysis (Dict[str, Any]): Analysis results from CV Analyzer
+        cv_text (str): Original CV text
+        job_description (str): Original job description
+        focus_area (str, optional): Specific area to focus improvements on
+    """
+    cv_analysis: Dict[str, Any] = Field(
+        ..., description="Analysis results from CV Analyzer"
+    )
     cv_text: str = Field(..., description="Original CV text")
     job_description: str = Field(..., description="Original job description")
-    focus_area: str = Field(None, description="Specific area to focus improvements on (e.g., 'summary', 'tools', etc.)")
+    focus_area: str = Field(
+        None,
+        description="Specific area to focus improvements on (e.g., 'summary', 'tools', etc.)",
+    )
+
 
 class CVEnhancerTool(BaseTool):
+    """
+    A tool for enhancing CVs based on analysis results.
+
+    This tool provides targeted recommendations for improving CV content
+    and format based on detailed analysis scores and job requirements.
+
+    Attributes:
+        name (str): Name of the tool
+        description (str): Description of the tool's functionality
+        args_schema (Type[BaseModel]): Schema for input validation
+        llm (BaseChatModel): Language model for generating suggestions
+    """
+
     name: str = "cv_enhancer"
-    description: str = """Use this tool to get detailed improvement suggestions for a CV based on analysis results from the cv_analyzer.
-    ONLY use when:
-    1. CV analysis has been completed
-    2. User explicitly requests CV improvement suggestions
-    3. You have both the original CV and job description available
-    
-    The tool provides targeted recommendations for improving CV content and format."""
-    
+    description: str = (
+        "Use this tool to get detailed improvement suggestions for a CV "
+        "based on analysis results from the cv_analyzer.\n"
+        "ONLY use when:\n"
+        "1. CV analysis has been completed\n"
+        "2. User explicitly requests CV improvement suggestions\n"
+        "3. You have both the original CV and job description available\n\n"
+        "The tool provides targeted recommendations for improving CV "
+        "content and format."
+    )
+
     args_schema: Type[BaseModel] = CVEnhancerInput
 
     llm: BaseChatModel = Field(description="LLM for generating suggestions")
 
-    def __init__(self, llm: BaseChatModel):  
+    def __init__(self, llm: BaseChatModel):
         # Create the LLM instance if none provided
         if llm is None:
             llm = ChatOpenAI(
-                temperature=0.7,
-                model="gpt-4-turbo-preview",
-                max_tokens=4000 
+                temperature=0.7, model="gpt-4-turbo-preview", max_tokens=4000
             )
-        
+
         # Initialize parent class with all required fields
         super().__init__(llm=llm)
 
     def _get_base_rules(self) -> str:
+        """
+        Get base rules for CV enhancement.
+
+        Returns:
+            str: Base rules for CV enhancement process
+        """
         return """
         IMPORTANT RULES:
         1. Never modify stated years of experience
@@ -47,41 +96,84 @@ class CVEnhancerTool(BaseTool):
         3. Never change or fabricate achievements, metrics, or roles
         4. Only reorganize and rephrase existing content to better match the job requirements
         """
-    
-    def _extract_scores(self,  cv_analysis: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+
+    def _extract_scores(
+        self, cv_analysis: Dict[str, Any]
+    ) -> Dict[str, Dict[str, float]]:
+        """
+        Extract and normalize scores from CV analysis results.
+
+        Args:
+            cv_analysis (Dict[str, Any]): Raw CV analysis results
+
+        Returns:
+            Dict[str, Dict[str, float]]: Normalized scores by category
+
+        Raises:
+            ValueError: If score parsing fails
+            TypeError: If score values are invalid
+        """
         try:
             # Get structured analysis scores (keyword and semantic matching)
-            structured_data = cv_analysis.get('structured_analysis', {})
-            keyword_score = float(structured_data.get('keyword_match_score', 75))
-            semantic_score = float(structured_data.get('semantic_similarity_score', 75))
-            
+            structured_data = cv_analysis.get("structured_analysis", {})
+            keyword_score = float(structured_data.get("keyword_match_score", 75))
+            semantic_score = float(structured_data.get("semantic_similarity_score", 75))
+
             # Get LLM analysis scores for qualitative categories
-            llm_data = cv_analysis.get('llm_analysis', {})
-            llm_categories = llm_data.get('category_scores', {})
-            
+            llm_data = cv_analysis.get("llm_analysis", {})
+            llm_categories = llm_data.get("category_scores", {})
+
             return {
                 "technical_match": {
                     "keyword_score": keyword_score,
                     "semantic_score": semantic_score,
-                    "tools_match": float(llm_categories.get('keyword_optimization', {}).get('tools_match', 75))
+                    "tools_match": float(
+                        llm_categories.get("keyword_optimization", {}).get(
+                            "tools_match", 75
+                        )
+                    ),
                 },
                 "content_quality": {
-                    "relevance": float(llm_categories.get('relevance', {}).get('score', 75)),
-                    "technical_fit": float(llm_categories.get('relevance', {}).get('technical_fit', 75)),
-                    "domain_knowledge": float(llm_categories.get('relevance', {}).get('domain_knowledge', 75))
+                    "relevance": float(
+                        llm_categories.get("relevance", {}).get("score", 75)
+                    ),
+                    "technical_fit": float(
+                        llm_categories.get("relevance", {}).get("technical_fit", 75)
+                    ),
+                    "domain_knowledge": float(
+                        llm_categories.get("relevance", {}).get("domain_knowledge", 75)
+                    ),
                 },
                 "formatting": {
-                    "clarity": float(llm_categories.get('formatting', {}).get('clarity', 75)),
-                    "ats_compatibility": float(llm_categories.get('formatting', {}).get('ats_compatibility', 75))
+                    "clarity": float(
+                        llm_categories.get("formatting", {}).get("clarity", 75)
+                    ),
+                    "ats_compatibility": float(
+                        llm_categories.get("formatting", {}).get(
+                            "ats_compatibility", 75
+                        )
+                    ),
                 },
                 "achievements": {
-                    "business_impact": float(llm_categories.get('achievements', {}).get('business_impact', 75)),
-                    "leadership": float(llm_categories.get('achievements', {}).get('leadership_collaboration', 75))
+                    "business_impact": float(
+                        llm_categories.get("achievements", {}).get(
+                            "business_impact", 75
+                        )
+                    ),
+                    "leadership": float(
+                        llm_categories.get("achievements", {}).get(
+                            "leadership_collaboration", 75
+                        )
+                    ),
                 },
                 "brevity": {
-                    "length": float(llm_categories.get('brevity', {}).get('length', 75)),
-                    "impact": float(llm_categories.get('brevity', {}).get('impact', 75))
-                }
+                    "length": float(
+                        llm_categories.get("brevity", {}).get("length", 75)
+                    ),
+                    "impact": float(
+                        llm_categories.get("brevity", {}).get("impact", 75)
+                    ),
+                },
             }
         except (ValueError, TypeError) as e:
             logger.error(f"Error parsing scores: {e}")
@@ -90,61 +182,76 @@ class CVEnhancerTool(BaseTool):
                 "content_quality": {"relevance": 75.0, "technical_fit": 75.0},
                 "formatting": {"clarity": 75.0, "ats_compatibility": 75.0},
                 "achievements": {"business_impact": 75.0, "leadership": 75.0},
-                "brevity": {"length": 75.0, "impact": 75.0}
+                "brevity": {"length": 75.0, "impact": 75.0},
             }
-        
-    def _get_score_based_improvements(self, scores: Dict[str, Dict[str, float]]) -> Dict[str, List[str]]:
+
+    def _get_score_based_improvements(
+        self, scores: Dict[str, Dict[str, float]]
+    ) -> Dict[str, List[str]]:
         improvements = {}
-        
+
         # Technical Match Improvements (using both structured and LLM scores)
-        if scores['technical_match']['keyword_score'] < 85 or scores['technical_match']['semantic_score'] < 85:
-            improvements['technical_match'] = [
+        if (
+            scores["technical_match"]["keyword_score"] < 85
+            or scores["technical_match"]["semantic_score"] < 85
+        ):
+            improvements["technical_match"] = [
                 f"Keyword Match (Score: {scores['technical_match']['keyword_score']}): Add missing technical keywords from job description",
                 f"Semantic Match (Score: {scores['technical_match']['semantic_score']}): Align terminology with industry standards",
-                f"Tools Match (Score: {scores['technical_match']['tools_match']}): Highlight relevant technical tools"
+                f"Tools Match (Score: {scores['technical_match']['tools_match']}): Highlight relevant technical tools",
             ]
-        
+
         # Content Quality Improvements (LLM-based)
-        if any(score < 85 for score in scores['content_quality'].values()):
-            improvements['content_quality'] = [
+        if any(score < 85 for score in scores["content_quality"].values()):
+            improvements["content_quality"] = [
                 f"Technical Fit (Score: {scores['content_quality']['technical_fit']}): Enhance technical expertise presentation",
                 f"Domain Knowledge (Score: {scores['content_quality']['domain_knowledge']}): Strengthen industry alignment",
-                f"Relevance (Score: {scores['content_quality']['relevance']}): Improve alignment with job requirements"
+                f"Relevance (Score: {scores['content_quality']['relevance']}): Improve alignment with job requirements",
             ]
-        
+
         # Formatting Improvements (LLM-based)
-        if any(score < 85 for score in scores['formatting'].values()):
-            improvements['formatting'] = [
+        if any(score < 85 for score in scores["formatting"].values()):
+            improvements["formatting"] = [
                 f"Clarity (Score: {scores['formatting']['clarity']}): Improve section organization and readability",
-                f"ATS Compatibility (Score: {scores['formatting']['ats_compatibility']}): Optimize structure for ATS systems"
+                f"ATS Compatibility (Score: {scores['formatting']['ats_compatibility']}): Optimize structure for ATS systems",
             ]
-        
+
         # Achievements Improvements (LLM-based)
-        if any(score < 85 for score in scores['achievements'].values()):
-            improvements['achievements'] = [
+        if any(score < 85 for score in scores["achievements"].values()):
+            improvements["achievements"] = [
                 f"Business Impact (Score: {scores['achievements']['business_impact']}): Add quantifiable metrics and results",
-                f"Leadership (Score: {scores['achievements']['leadership']}): Highlight team leadership and project management"
+                f"Leadership (Score: {scores['achievements']['leadership']}): Highlight team leadership and project management",
             ]
-        
+
         # Brevity Improvements (LLM-based)
-        if any(score < 85 for score in scores['brevity'].values()):
-            improvements['brevity'] = [
+        if any(score < 85 for score in scores["brevity"].values()):
+            improvements["brevity"] = [
                 f"Length (Score: {scores['brevity']['length']}): Optimize content length and conciseness",
-                f"Impact (Score: {scores['brevity']['impact']}): Focus on most significant achievements and skills"
+                f"Impact (Score: {scores['brevity']['impact']}): Focus on most significant achievements and skills",
             ]
-        
+
         return improvements
 
     def _validate_focus_area(self, focus_area: str) -> str:
+        """
+        Validate and normalize the focus area for CV enhancement.
+
+        Args:
+            focus_area (str): Requested focus area
+
+        Returns:
+            str: Normalized focus area name
+        """
+
         valid_areas = {
             "summary": ["summary", "profile", "overview"],
             "experience": ["experience", "work history", "roles"],
             "skills": ["skills", "technologies", "tools"],
             "achievements": ["achievements", "accomplishments"],
             "education": ["education", "qualifications"],
-            "general": ["general", "all", "complete"]
+            "general": ["general", "all", "complete"],
         }
-        
+
         focus_area = focus_area.lower() if focus_area else "general"
         for main_area, aliases in valid_areas.items():
             if focus_area in aliases:
@@ -152,9 +259,18 @@ class CVEnhancerTool(BaseTool):
         return "general"
 
     def _generate_analysis_text(self, category: str, scores: Dict) -> str:
-        """Generate analysis text based on category scores"""
+        """
+        Generate analysis text for a specific category.
+
+        Args:
+            category (str): Category to analyze
+            scores (Dict): Scores for the category
+
+        Returns:
+            str: Formatted analysis text
+        """
         category_data = scores.get(category, {})
-        
+
         if category == "relevance":
             return f"Technical fit: {category_data.get('technical_fit', 0)}, Domain knowledge: {category_data.get('domain_knowledge', 0)}"
         elif category == "keyword_optimization":
@@ -167,10 +283,27 @@ class CVEnhancerTool(BaseTool):
             return f"Length: {category_data.get('length', 0)}, Impact: {category_data.get('impact', 0)}"
         return "Analysis not available"
 
-    def _generate_full_evaluation(self, base_context: str, scores: Dict, cv_text: str, job_description: str) -> Dict:
+    def _generate_full_evaluation(
+        self, base_context: str, scores: Dict, cv_text: str, job_description: str
+    ) -> Dict:
+        """
+        Generate a comprehensive CV evaluation and improvement suggestions.
+
+        Args:
+            base_context (str): Base context for LLM prompt
+            scores (Dict): Analysis scores
+            cv_text (str): Original CV text
+            job_description (str): Job description
+
+        Returns:
+            Dict: Full evaluation results and suggestions
+
+        Raises:
+            Exception: If evaluation generation fails
+        """
         # Get score-based improvements
         score_improvements = self._get_score_based_improvements(scores)
-        
+
         prompt = f"""{base_context}
         Original CV: {cv_text}
         Job Description: {job_description}
@@ -178,7 +311,7 @@ class CVEnhancerTool(BaseTool):
         DETAILED SCORE ANALYSIS AND IMPROVEMENTS NEEDED:
         {'-' * 50}
         """
-        
+
         # Add score-based improvements to prompt
         for category, improvements in score_improvements.items():
             prompt += f"\n{category.upper()}:"
@@ -267,20 +400,46 @@ class CVEnhancerTool(BaseTool):
             }}
         }}
         """
-        
+
         try:
             response = self.llm.invoke(prompt)
-            response_text = response.content if hasattr(response, 'content') else str(response)
-            return json.loads(response_text.strip().replace('```json', '').replace('```', '').strip())
+            response_text = (
+                response.content if hasattr(response, "content") else str(response)
+            )
+            return json.loads(
+                response_text.strip().replace("```json", "").replace("```", "").strip()
+            )
         except Exception as e:
             return {
                 "type": "error",
-                "error": f"Failed to generate full evaluation: {str(e)}"
+                "error": f"Failed to generate full evaluation: {str(e)}",
             }
 
-    def _generate_section_improvement(self, base_context: str, focus_area: str, scores: Dict, cv_text: str, job_description: str) -> Dict:
-        """Generate improvement suggestions for a specific section"""
-        
+    def _generate_section_improvement(
+        self,
+        base_context: str,
+        focus_area: str,
+        scores: Dict,
+        cv_text: str,
+        job_description: str,
+    ) -> Dict:
+        """
+        Generate improvement suggestions for a specific CV section.
+
+        Args:
+            base_context (str): Base context for LLM prompt
+            focus_area (str): Section to focus on
+            scores (Dict): Analysis scores
+            cv_text (str): Original CV text
+            job_description (str): Job description
+
+        Returns:
+            Dict: Section-specific improvement suggestions
+
+        Raises:
+            Exception: If suggestion generation fails
+        """
+
         section_prompts = {
             "summary": """
             Analyze and improve the professional summary section. Provide:
@@ -323,7 +482,6 @@ class CVEnhancerTool(BaseTool):
                 }
             }
             """,
-            
             "experience": """
             Analyze and improve each work experience entry individually. For each role, maintain the exact format:
 
@@ -378,7 +536,6 @@ class CVEnhancerTool(BaseTool):
             - Highlight technical implementations
             - Be concise but detailed
             """,
-            
             "tools": """
             Analyze and improve the technical tools section. Organize by categories with bullet points:
             1. Current State Analysis
@@ -420,7 +577,6 @@ class CVEnhancerTool(BaseTool):
                 }
             }
             """,
-            
             "skills": """
             Analyze and improve the technical skills section. Organize with bullet points by:
             1. Current State Analysis
@@ -462,7 +618,6 @@ class CVEnhancerTool(BaseTool):
                 }
             }
             """,
-            
             "achievements": """
             Analyze and improve the achievements section with bullet points focusing on:
             1. Current State Analysis
@@ -503,9 +658,9 @@ class CVEnhancerTool(BaseTool):
                     ]
                 }
             }
-            """
+            """,
         }
-        
+
         prompt = f"""{base_context}
         Original CV: {cv_text}
         Job Description: {job_description}
@@ -554,26 +709,51 @@ class CVEnhancerTool(BaseTool):
         - Skills/Tools: Organize by categories, emphasize proficiency levels
         - Achievements: Quantify results and technical impact
         """
-        
+
         try:
             response = self.llm.invoke(prompt)
-            response_text = response.content if hasattr(response, 'content') else str(response)
-            return json.loads(response_text.strip().replace('```json', '').replace('```', '').strip())
+            response_text = (
+                response.content if hasattr(response, "content") else str(response)
+            )
+            return json.loads(
+                response_text.strip().replace("```json", "").replace("```", "").strip()
+            )
         except Exception as e:
             return {
                 "type": "error",
-                "error": f"Failed to generate section improvement: {str(e)}"
+                "error": f"Failed to generate section improvement: {str(e)}",
             }
 
-    def _run(self, cv_analysis: Dict[str, Any], cv_text: str, job_description: str, focus_area: str = None) -> Dict[str, Any]:
+    def _run(
+        self,
+        cv_analysis: Dict[str, Any],
+        cv_text: str,
+        job_description: str,
+        focus_area: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Run CV enhancement process.
+
+        Args:
+            cv_analysis (Dict[str, Any]): Analysis results from CV Analyzer
+            cv_text (str): Original CV text
+            job_description (str): Job description
+            focus_area (str, optional): Specific area to focus on. Defaults to None.
+
+        Returns:
+            Dict[str, Any]: Enhancement suggestions and improvements
+
+        Raises:
+            Exception: If enhancement process fails
+        """
         try:
             logger.debug("Starting CV enhancement process")
             scores = self._extract_scores(cv_analysis)
-            logger.debug(f"Extracted scores: {scores}")
-            
+            logger.debug("Extracted scores: %s", scores)
+
             validated_focus_area = self._validate_focus_area(focus_area)
-            logger.debug(f"Validated focus area: {validated_focus_area}")
-            
+            logger.debug("Validated focus area: %s", validated_focus_area)
+
             # Updated base context to use new score structure
             base_context = f"""
             You are an expert tech recruiter and CV consultant. Your task is to enhance a CV based on the following scores:
@@ -605,15 +785,28 @@ class CVEnhancerTool(BaseTool):
             {self._get_base_rules()}
             """
 
-            logger.debug(f"Generating {'full evaluation' if validated_focus_area == 'general' else 'section improvement'}")
+            logger.debug(
+                "%s",
+                "Generating full evaluation"
+                if validated_focus_area == "general"
+                else "Generating section improvement"
+            )
             if validated_focus_area == "general":
-                return self._generate_full_evaluation(base_context, scores, cv_text, job_description)
-            else:
-                return self._generate_section_improvement(base_context, validated_focus_area, scores, cv_text, job_description)
+                return self._generate_full_evaluation(
+                    base_context,
+                    scores,
+                    cv_text,
+                    job_description
+                )
+            
+            return self._generate_section_improvement(
+                base_context,
+                validated_focus_area,
+                scores,
+                cv_text,
+                job_description
+            )
 
         except Exception as e:
-            logger.error(f"Error processing CV analysis: {str(e)}", exc_info=True)
-            return {
-                "type": "error",
-                "error": f"Failed to process analysis: {str(e)}"
-            }
+            logger.error("Error processing CV analysis: %s", str(e), exc_info=True)
+            return {"type": "error", "error": f"Failed to process analysis: {str(e)}"}

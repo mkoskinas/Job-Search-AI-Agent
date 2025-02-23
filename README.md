@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AI Job Search Assistant is an interactive, multi-purpose application that helps users search for jobs in real time, analyse their CVs, and get advanced ATS (Application Tracking System) and Match scores το improve their job application materials using AI and Large Language Models. Built on top of Gradio and LangChain with the support of OpenAI's GPT-4 Turbo model, the system uses various custom tools to deliver a conversational experience. The assistant provides job search/filtering capabilites, offers advanced CV analysis and targeted improvement suggestions — all while keeping a conversational memory for context.
+The AI Job Search Assistant is an interactive, multi-purpose application that helps users search for jobs in real time, analyse their CVs, and get advanced ATS (Application Tracking System) and Match scores to improve their job application materials using AI and Large Language Models. Built on top of Gradio and LangChain with the support of OpenAI's GPT-4 Turbo model, the system uses various custom tools to deliver a conversational experience. The assistant provides job search/filtering capabilities, offers advanced CV analysis and targeted improvement suggestions — all while keeping a conversational memory for context.
 
 
 ## Table of Contents
@@ -10,7 +10,6 @@ The AI Job Search Assistant is an interactive, multi-purpose application that he
 
 * [Features](#features)
 * [Description](#description)
-* [Features](#features)
 * [Architecture](#architecture)
 * [Q&A Agent Details](#qa-agent-details)
 * [Installation](#installation)
@@ -26,7 +25,7 @@ The AI Job Search Assistant is an interactive, multi-purpose application that he
 - 🎤 Text-to-Speech: Listen to responses with integrated TTS support.
 
 ## Description
-This application is designed to act as a virtual job search and CV consultation assistant. It combines job searching through scraping LinkedIn job posts, advanced filtering via text vectorisation and similairty search, CV analysis with job description matching, and AI-powered recommendations to help job seekers optimise their applications.  
+This application is designed to act as a virtual job search and CV consultation assistant. It combines job searching through scraping LinkedIn job posts, advanced filtering via text vectorisation and similarity search, CV analysis with job description matching, and AI-powered recommendations to help job seekers optimise their applications.  
 
 The key functionalities include:
 
