@@ -77,12 +77,75 @@ The agent uses a carefully designed ChatPromptTemplate that includes:
 
 ## Installation
 
-1. Clone the repository:
+# A. Using a Python Virtual Environment
+
+1.  Fork the repository [here](https://github.com/mkoskinas/Job-Search-AI-Agent/fork).
+
+2. Clone the forked repository.
 ```bash
-git clone <https://github.com/mkoskinas/Job-Search-AI-Agent.git>
+git clone https://github.com/<YOUR-USERNAME>/Job-Search-AI-Agent.git
 cd Job-Search-AI-Agent
 ```
-2. Create and activate conda environment:
+
+3. Create the environment:
+
+```bash
+python -m venv rag_env
+```
+
+4. Activate the Virtual Environment.
+
+- On Windows.
+
+```bash
+env\Scripts\activate
+```
+
+- On macOS and Linux.
+
+```bash
+source env/bin/activate
+```
+
+5. Install Dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+6. Download SpaCy language model
+
+```bash
+python -m spacy download en_core_web_sm
+```
+
+7. Create a `.env` file in the project root and add your OpenAI API key:
+
+```bash
+OPENAI_API_KEY=your_api_key_here
+```
+
+8. Run the application:
+
+```bash
+python main.py
+```
+
+9. Access the web interface at `http://127.0.0.1:7861`
+
+OR
+
+# B. Using Anaconda
+
+1.  Fork the repository [here](https://github.com/mkoskinas/Job-Search-AI-Agent/fork).
+
+2. Clone the forked repository.
+```bash
+git clone https://github.com/<YOUR-USERNAME>/Job-Search-AI-Agent.git
+cd Job-Search-AI-Agent
+```
+3. Create and activate the environment:
+
 ```bash
 # Create environment from yml file
 conda env create -f environment.yml
@@ -94,20 +157,20 @@ conda activate rag_env
 conda env update -f environment.yml
 ```
 
-3. Install spaCy language model:
+4. Install spaCy language model:
 ```bash
 python -m spacy download en_core_web_sm
 ```
 
-4. Set up environment variables:
+5. Set up environment variables:
 Create a `.env` file in the root directory with:
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-5. Run the application:
+6. Run the application:
 ```bash
 python main.py
 ```
 
-6. Access the web interface at `http://127.0.0.1:7861`
+7. Access the web interface at `http://127.0.0.1:7861`
