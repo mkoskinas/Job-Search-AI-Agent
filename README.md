@@ -77,7 +77,7 @@ The agent uses a carefully designed ChatPromptTemplate that includes:
 
 ## Installation
 
-# A. Using a Python Virtual Environment
+### A. Using a Python Virtual Environment
 
 1.  Fork the repository [here](https://github.com/mkoskinas/Job-Search-AI-Agent/fork).
 
@@ -98,13 +98,13 @@ python -m venv rag_env
 - On Windows.
 
 ```bash
-env\Scripts\activate
+rag_env\Scripts\activate
 ```
 
 - On macOS and Linux.
 
 ```bash
-source env/bin/activate
+source rag_env/bin/activate
 ```
 
 5. Install Dependencies:
@@ -135,7 +135,7 @@ python main.py
 
 OR
 
-# B. Using Anaconda
+### B. Using Anaconda
 
 1.  Fork the repository [here](https://github.com/mkoskinas/Job-Search-AI-Agent/fork).
 
